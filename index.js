@@ -35,6 +35,7 @@ const client = new MongoClient(uri, {
 
         const database = client.db('Taskify');
         const userCollection = database.collection('users');
+        const taskCollection = database.collection('tasks');
 
 
 
@@ -60,17 +61,54 @@ async function run() {
                 
                 const result = await userCollection.insertOne(newUser);
                 res.status(201).send({ message: "User created successfully", user: result.ops[0] });
-              }
+              } 
             } catch (error) {
               res.status(500).send({ message: "Internal server error", error: error.message });
             }
           });
 
-app.get('/users', async (req, res) => {
+        app.get('/users', async (req, res) => {
 
             const result = await userCollection.find().toArray();
             res.send(result);
         });
+
+        app.post('/tasks' , async (req,res)=>{
+            const newTask = req.body;
+            const result = await taskCollection.insertOne(newTask);
+            res.send(result);
+        })
+        app.get('/tasks', async (req, res) => {
+
+            const result = await taskCollection.find().toArray();
+            res.send(result);
+        });
+        
+
+        app.put('/tasks/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const options = { upsert: true };
+            const updatedTask =req.body;
+            const task = {
+                $set: {
+                   title: updatedTask.title,
+                   description: updatedTask.description,
+                   category: updatedTask.category
+                }
+            }
+
+            const result = await taskCollection.updateOne(filter, task, options )
+
+            res.send(result);
+        })
+
+        app.delete('/tasks/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await taskCollection.deleteOne(query);
+            res.send(result);
+        })
 
     } finally {
         // Ensures that the client will close when you finish/error
