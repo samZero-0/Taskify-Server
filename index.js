@@ -36,6 +36,7 @@ const client = new MongoClient(uri, {
         const database = client.db('Taskify');
         const userCollection = database.collection('users');
         const taskCollection = database.collection('tasks');
+        // await taskCollection.createIndex({ lastModified: 1 });
 
 
 
@@ -78,30 +79,41 @@ async function run() {
             const result = await taskCollection.insertOne(newTask);
             res.send(result);
         })
+        
+        // Modify the GET tasks endpoint to support polling without requiring an index
         app.get('/tasks', async (req, res) => {
-
-            const result = await taskCollection.find().toArray();
-            res.send(result);
-        });
+            try {
+                // Simply get all tasks and sort them by order
+                const result = await taskCollection.find().sort({ order: 1 }).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Error fetching tasks' });
+    }
+});
         
 
         app.put('/tasks/:id', async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
-            const options = { upsert: true };
-            const updatedTask =req.body;
+            const updatedTask = req.body;
             const task = {
                 $set: {
-                   title: updatedTask.title,
-                   description: updatedTask.description,
-                   category: updatedTask.category
+                    title: updatedTask.title,
+                    description: updatedTask.description,
+                    category: updatedTask.category,
+                    order: updatedTask.order,
+                    lastModified: Date.now() // Add timestamp for polling
                 }
+            };
+        
+            try {
+                const result = await taskCollection.updateOne(filter, task);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Error updating task' });
             }
+        });
 
-            const result = await taskCollection.updateOne(filter, task, options )
-
-            res.send(result);
-        })
 
         app.delete('/tasks/:id', async (req, res) => {
             const id = req.params.id;
@@ -109,6 +121,24 @@ async function run() {
             const result = await taskCollection.deleteOne(query);
             res.send(result);
         })
+        app.post('/tasks/update-order', async (req, res) => {
+            try {
+                const updates = req.body;
+                
+                // Process each update in sequence
+                for (const update of updates) {
+                    await taskCollection.updateOne(
+                        { _id: new ObjectId(update.taskId) },
+                        { $set: { order: update.order, category: update.category } }
+                    );
+                }
+                
+                res.status(200).send({ message: 'Task orders updated successfully' });
+            } catch (error) {
+                console.error('Error updating task orders:', error);
+                res.status(500).send({ message: 'Error updating task orders' });
+            }
+        });
 
     } finally {
         // Ensures that the client will close when you finish/error
